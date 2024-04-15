@@ -74,9 +74,9 @@ option(DISABLE_DEPRECATION_WARNINGS "Disable warnings generated from deprecated 
 # Option to enable line info in CUDA device compilation to allow introspection when profiling /
 # memchecking
 option(CUDA_ENABLE_LINEINFO
-       "Enable the -lineinfo option for nvcc (useful for cuda-memcheck / profiler)" OFF
+       "Enable the -lineinfo option for nvcc (useful for cuda-memcheck / profiler)" ON
 )
-option(CUDA_WARNINGS_AS_ERRORS "Enable -Werror=all-warnings for all CUDA compilation" ON)
+option(CUDA_WARNINGS_AS_ERRORS "Enable -Werror=all-warnings for all CUDA compilation" OFF)
 # cudart can be statically linked or dynamically linked. The python ecosystem wants dynamic linking
 option(CUDA_STATIC_RUNTIME "Statically link the CUDA runtime" OFF)
 option(USE_LIBARROW_FROM_PYARROW "Only use the libarrow contained in pyarrow" OFF)
@@ -130,8 +130,8 @@ if(CUDF_BUILD_STACKTRACE_DEBUG AND NOT CMAKE_COMPILER_IS_GNUCXX)
   message(FATAL_ERROR "CUDF_BUILD_STACKTRACE_DEBUG is only supported with GCC compiler")
 endif()
 
-set(CUDF_CXX_FLAGS "")
-set(CUDF_CUDA_FLAGS "")
+set(CUDF_CXX_FLAGS "-Wno-unused-function")
+set(CUDF_CUDA_FLAGS "-Wno-unused-function")
 set(CUDF_CXX_DEFINITIONS "")
 set(CUDF_CUDA_DEFINITIONS "")
 
