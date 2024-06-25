@@ -16,6 +16,7 @@
 
 #include "groupby/common/utils.hpp"
 #include "groupby/hash/groupby_kernels.cuh"
+#include "groupby/hash/row_aggregator.cuh"
 
 #include <cudf/aggregation.hpp>
 #include <cudf/column/column.hpp>
@@ -65,6 +66,565 @@ using probing_scheme_type = cuco::linear_probing<
   1,  ///< Number of threads used to handle each input key
   cudf::experimental::row::hash::device_row_hasher<cudf::hashing::detail::default_hash,
                                                    cudf::nullate::DYNAMIC>>;
+
+template <typename type, std::enable_if_t<std::is_integral_v<type>>* = nullptr>
+constexpr __device__ __host__ type divide_round_up(type dividend, type divisor)
+{
+  assert(divisor != 0);
+
+  return dividend / divisor + (dividend % divisor != 0);
+}
+
+__device__ __host__ size_t round_to_multiple_of_8(size_t num)
+{
+  size_t constexpr multiple_of = 8;
+
+  return divide_round_up(num, multiple_of) * multiple_of;
+}
+
+size_t get_previous_multiple_of_8(size_t number) { return number / 8 * 8; }
+
+template <typename SetType>
+__device__ cudf::size_type find_local_mapping(cudf::size_type cur_idx,
+                                              cudf::size_type num_input_rows,
+                                              cudf::size_type* cardinality,
+                                              SetType shared_set,
+                                              cudf::size_type* local_mapping_index,
+                                              cudf::size_type* shared_set_indices,
+                                              bitmask_type const* __restrict__ row_bitmask,
+                                              bool skip_rows_with_nulls)
+{
+  cudf::size_type result_idx;
+  bool inserted;
+
+  // TODO: ugly
+  if (cur_idx < num_input_rows) {
+    if (not skip_rows_with_nulls or cudf::bit_is_set(row_bitmask, cur_idx)) {
+      auto const result = shared_set.insert_and_find(cur_idx);
+      result_idx        = *result.first;
+      inserted          = result.second;
+
+      // inserted a new element
+      if (result.second) {
+        auto shared_set_index                = atomicAdd(cardinality, 1);
+        shared_set_indices[shared_set_index] = cur_idx;
+        local_mapping_index[cur_idx]         = shared_set_index;
+      }
+    }
+  }
+
+  // Syncing the thread block is needed so that updates in `local_mapping_index` are visible to all
+  // threads in the thread block.
+  __syncthreads();
+
+  if (cur_idx < num_input_rows) {
+    if (not skip_rows_with_nulls or cudf::bit_is_set(row_bitmask, cur_idx)) {
+      // element was already in set
+      if (!inserted) { local_mapping_index[cur_idx] = local_mapping_index[result_idx]; }
+    }
+  }
+}
+
+template <typename SetType>
+__device__ cudf::size_type find_global_mapping(cudf::size_type cur_idx,
+                                               SetType global_set,
+                                               cudf::size_type* shared_set_indices,
+                                               cudf::size_type* global_mapping_index,
+                                               cudf::size_type shared_set_num_elements)
+{
+  auto input_idx = shared_set_indices[cur_idx];
+  auto result    = global_set.insert_and_find(input_idx);
+  global_mapping_index[blockIdx.x * shared_set_num_elements + cur_idx] = *result.first;
+}
+
+/*
+ * Inserts keys into the shared memory hash set, and stores the row index of the local
+ * pre-aggregate table in `local_mapping_index`. If the number of unique keys found in a
+ * threadblock exceeds `cardinality_threshold`, the threads in that block will exit without updating
+ * `global_set` or setting `global_mapping_index`. Else, we insert the unique keys found to the
+ * global hash set, and save the row index of the global sparse table in `global_mapping_index`.
+ */
+template <class SetRef,
+          cudf::size_type shared_set_num_elements,
+          cudf::size_type cardinality_threshold,
+          typename GlobalSetType,
+          typename KeyEqual,
+          typename RowHasher,
+          class WindowExtent>
+__global__ void compute_mapping_indices(GlobalSetType global_set,
+                                        cudf::size_type num_input_rows,
+                                        WindowExtent window_extent,
+                                        cuco::empty_key<cudf::size_type> empty_key_sentinel,
+                                        KeyEqual d_key_equal,
+                                        RowHasher d_row_hash,
+                                        cudf::size_type* local_mapping_index,
+                                        cudf::size_type* global_mapping_index,
+                                        cudf::size_type* block_cardinality,
+                                        bool* direct_aggregations,
+                                        bitmask_type const* __restrict__ row_bitmask,
+                                        bool skip_rows_with_nulls)
+{
+  __shared__ cudf::size_type shared_set_indices[shared_set_num_elements];
+
+  // Shared set initialization
+  __shared__ typename SetRef::window_type windows[window_extent.value()];
+  auto storage = SetRef::storage_ref_type(window_extent, windows);
+  auto shared_set =
+    SetRef(empty_key_sentinel, d_key_equal, probing_scheme_type{d_row_hash}, {}, storage);
+  auto const block = cooperative_groups::this_thread_block();
+  shared_set.initialize(block);
+  block.sync();
+
+  auto shared_insert_ref = std::move(shared_set).with(cuco::insert_and_find);
+
+  __shared__ cudf::size_type cardinality;
+
+  if (threadIdx.x == 0) { cardinality = 0; }
+
+  __syncthreads();
+
+  int num_loops = divide_round_up(num_input_rows, (cudf::size_type)(blockDim.x * gridDim.x));
+  auto end_idx  = num_loops * blockDim.x * gridDim.x;
+
+  for (auto cur_idx = blockDim.x * blockIdx.x + threadIdx.x; cur_idx < end_idx;
+       cur_idx += blockDim.x * gridDim.x) {
+    find_local_mapping(cur_idx,
+                       num_input_rows,
+                       &cardinality,
+                       shared_insert_ref,
+                       local_mapping_index,
+                       shared_set_indices,
+                       row_bitmask,
+                       skip_rows_with_nulls);
+    __syncthreads();
+
+    if (cardinality >= cardinality_threshold) {
+      if (threadIdx.x == 0) { *direct_aggregations = true; }
+      break;
+    }
+
+    __syncthreads();
+  }
+
+  // Insert unique keys from shared to global hash set
+  if (cardinality < cardinality_threshold) {
+    for (auto cur_idx = threadIdx.x; cur_idx < cardinality; cur_idx += blockDim.x) {
+      find_global_mapping(
+        cur_idx, global_set, shared_set_indices, global_mapping_index, shared_set_num_elements);
+    }
+  }
+
+  if (threadIdx.x == 0) block_cardinality[blockIdx.x] = cardinality;
+}
+
+__device__ void calculate_columns_to_aggregate(int& col_start,
+                                               int& col_end,
+                                               cudf::mutable_table_device_view output_values,
+                                               int num_input_cols,
+                                               std::byte** s_aggregates_pointer,
+                                               bool** s_aggregates_valid_pointer,
+                                               std::byte* shared_set_aggregates,
+                                               cudf::size_type cardinality,
+                                               int total_agg_size)
+{
+  if (threadIdx.x == 0) {
+    col_start           = col_end;
+    int bytes_allocated = 0;
+    int valid_col_size  = round_to_multiple_of_8(sizeof(bool) * cardinality);
+    while ((bytes_allocated < total_agg_size) && (col_end < num_input_cols)) {
+      int next_col_size =
+        round_to_multiple_of_8(sizeof(output_values.column(col_end).type()) * cardinality);
+      int next_col_total_size = valid_col_size + next_col_size;
+
+      if (bytes_allocated + next_col_total_size > total_agg_size) { break; }
+
+      s_aggregates_pointer[col_end] = shared_set_aggregates + bytes_allocated;
+      s_aggregates_valid_pointer[col_end] =
+        reinterpret_cast<bool*>(shared_set_aggregates + bytes_allocated + next_col_size);
+
+      bytes_allocated += next_col_total_size;
+      col_end++;
+    }
+  }
+}
+
+__device__ void initialize_shared_memory_aggregates(int col_start,
+                                                    int col_end,
+                                                    cudf::mutable_table_device_view output_values,
+                                                    std::byte** s_aggregates_pointer,
+                                                    bool** s_aggregates_valid_pointer,
+                                                    cudf::size_type cardinality,
+                                                    cudf::aggregation::Kind const* aggs)
+{
+  for (auto col_idx = col_start; col_idx < col_end; col_idx++) {
+    for (auto idx = threadIdx.x; idx < cardinality; idx += blockDim.x) {
+      cudf::detail::dispatch_type_and_aggregation(output_values.column(col_idx).type(),
+                                                  aggs[col_idx],
+                                                  gqe::initialize_shmem{},
+                                                  s_aggregates_pointer[col_idx],
+                                                  idx,
+                                                  s_aggregates_valid_pointer[col_idx]);
+    }
+  }
+}
+
+__device__ void compute_pre_aggregrates(int col_start,
+                                        int col_end,
+                                        cudf::table_device_view input_values,
+                                        cudf::size_type num_input_rows,
+                                        cudf::size_type* local_mapping_index,
+                                        std::byte** s_aggregates_pointer,
+                                        bool** s_aggregates_valid_pointer,
+                                        cudf::aggregation::Kind const* aggs,
+                                        bitmask_type const* row_bitmask,
+                                        bool skip_rows_with_nulls)
+{
+  for (auto cur_idx = blockDim.x * blockIdx.x + threadIdx.x; cur_idx < num_input_rows;
+       cur_idx += blockDim.x * gridDim.x) {
+    // TODO: ugly
+    if (not skip_rows_with_nulls or cudf::bit_is_set(row_bitmask, cur_idx)) {
+      auto map_idx = local_mapping_index[cur_idx];
+
+      for (auto col_idx = col_start; col_idx < col_end; col_idx++) {
+        auto input_col = input_values.column(col_idx);
+
+        cudf::detail::dispatch_type_and_aggregation(input_col.type(),
+                                                    aggs[col_idx],
+                                                    gqe::shmem_element_aggregator{},
+                                                    s_aggregates_pointer[col_idx],
+                                                    map_idx,
+                                                    s_aggregates_valid_pointer[col_idx],
+                                                    input_col,
+                                                    cur_idx);
+      }
+    }
+  }
+}
+
+template <int shared_set_num_elements>
+__device__ void compute_final_aggregates(int col_start,
+                                         int col_end,
+                                         cudf::table_device_view input_values,
+                                         cudf::mutable_table_device_view output_values,
+                                         cudf::size_type cardinality,
+                                         cudf::size_type* global_mapping_index,
+                                         std::byte** s_aggregates_pointer,
+                                         bool** s_aggregates_valid_pointer,
+                                         cudf::aggregation::Kind const* aggs)
+{
+  for (auto cur_idx = threadIdx.x; cur_idx < cardinality; cur_idx += blockDim.x) {
+    auto out_idx = global_mapping_index[blockIdx.x * shared_set_num_elements + cur_idx];
+    for (auto col_idx = col_start; col_idx < col_end; col_idx++) {
+      auto output_col = output_values.column(col_idx);
+
+      cudf::detail::dispatch_type_and_aggregation(input_values.column(col_idx).type(),
+                                                  aggs[col_idx],
+                                                  gqe::gmem_element_aggregator{},
+                                                  output_col,
+                                                  out_idx,
+                                                  input_values.column(col_idx),
+                                                  s_aggregates_pointer[col_idx],
+                                                  cur_idx,
+                                                  s_aggregates_valid_pointer[col_idx]);
+    }
+  }
+}
+
+/* Takes the local_mapping_index and global_mapping_index to compute
+ * pre (shared) and final (global) aggregates*/
+template <cudf::size_type shared_set_num_elements, cudf::size_type cardinality_threshold>
+__global__ void compute_aggregates(cudf::size_type* local_mapping_index,
+                                   cudf::size_type* global_mapping_index,
+                                   cudf::size_type* block_cardinality,
+                                   cudf::table_device_view input_values,
+                                   cudf::mutable_table_device_view output_values,
+                                   cudf::size_type num_input_rows,
+                                   cudf::aggregation::Kind const* aggs,
+                                   int total_agg_size,
+                                   int pointer_size,
+                                   bitmask_type const* row_bitmask,
+                                   bool skip_rows_with_null)
+{
+  cudf::size_type cardinality = block_cardinality[blockIdx.x];
+  if (cardinality >= cardinality_threshold) { return; }
+
+  int num_input_cols = output_values.num_columns();
+  extern __shared__ std::byte shared_set_aggregates[];
+  std::byte** s_aggregates_pointer =
+    reinterpret_cast<std::byte**>(shared_set_aggregates + total_agg_size);
+  bool** s_aggregates_valid_pointer =
+    reinterpret_cast<bool**>(shared_set_aggregates + total_agg_size + pointer_size);
+
+  __shared__ int col_start;
+  __shared__ int col_end;
+  if (threadIdx.x == 0) {
+    col_start = 0;
+    col_end   = 0;
+  }
+  __syncthreads();
+
+  while (col_end < num_input_cols) {
+    calculate_columns_to_aggregate(col_start,
+                                   col_end,
+                                   output_values,
+                                   num_input_cols,
+                                   s_aggregates_pointer,
+                                   s_aggregates_valid_pointer,
+                                   shared_set_aggregates,
+                                   cardinality,
+                                   total_agg_size);
+    __syncthreads();
+
+    initialize_shared_memory_aggregates(col_start,
+                                        col_end,
+                                        output_values,
+                                        s_aggregates_pointer,
+                                        s_aggregates_valid_pointer,
+                                        cardinality,
+                                        aggs);
+    __syncthreads();
+
+    compute_pre_aggregrates(col_start,
+                            col_end,
+                            input_values,
+                            num_input_rows,
+                            local_mapping_index,
+                            s_aggregates_pointer,
+                            s_aggregates_valid_pointer,
+                            aggs,
+                            row_bitmask,
+                            skip_rows_with_null);
+    __syncthreads();
+
+    compute_final_aggregates<shared_set_num_elements>(col_start,
+                                                      col_end,
+                                                      input_values,
+                                                      output_values,
+                                                      cardinality,
+                                                      global_mapping_index,
+                                                      s_aggregates_pointer,
+                                                      s_aggregates_valid_pointer,
+                                                      aggs);
+    __syncthreads();
+  }
+}
+
+template <typename SetType>
+struct compute_direct_aggregates {
+  SetType set;
+  cudf::table_device_view input_values;
+  cudf::mutable_table_device_view output_values;
+  cudf::aggregation::Kind const* __restrict__ aggs;
+  bitmask_type const* __restrict__ row_bitmask;
+  bool skip_rows_with_nulls;
+  cudf::size_type* block_cardinality;
+  int stride;
+  int block_size;
+  cudf::size_type cardinality_threshold;
+
+  compute_direct_aggregates(SetType set,
+                            cudf::table_device_view input_values,
+                            cudf::mutable_table_device_view output_values,
+                            cudf::aggregation::Kind const* aggs,
+                            bitmask_type const* row_bitmask,
+                            bool skip_rows_with_nulls,
+                            cudf::size_type* block_cardinality,
+                            int stride,
+                            int block_size,
+                            cudf::size_type cardinality_threshold)
+    : set(set),
+      input_values(input_values),
+      output_values(output_values),
+      aggs(aggs),
+      row_bitmask(row_bitmask),
+      skip_rows_with_nulls(skip_rows_with_nulls),
+      block_cardinality(block_cardinality),
+      stride(stride),
+      block_size(block_size),
+      cardinality_threshold(cardinality_threshold)
+  {
+  }
+
+  __device__ void operator()(cudf::size_type i)
+  {
+    if (not skip_rows_with_nulls or cudf::bit_is_set(row_bitmask, i)) {
+      int block_id = (i % stride) / block_size;
+      if (block_cardinality[block_id] >= cardinality_threshold) {
+        auto const result = set.insert_and_find(i);
+        cudf::detail::aggregate_row<true, true>(
+          output_values, *result.first, input_values, i, aggs);
+      }
+    }
+  }
+};
+
+// TODO: see diff
+template <typename SetType>
+void extract_populated_keys(SetType const& key_set,
+                            rmm::device_uvector<cudf::size_type>& populated_keys,
+                            rmm::cuda_stream_view stream)
+{
+  auto const keys_end = key_set.retrieve_all(populated_keys.begin(), stream.value());
+
+  populated_keys.resize(std::distance(populated_keys.begin(), keys_end), stream);
+}
+
+// struct initialize_sparse_table {
+//   cudf::size_type const* row_indices;
+//   cudf::mutable_table_device_view sparse_table;
+//   cudf::aggregation::Kind const* __restrict__ aggs;
+
+//   initialize_sparse_table(cudf::size_type const* row_indices,
+//                           cudf::mutable_table_device_view sparse_table,
+//                           cudf::aggregation::Kind const* aggs)
+//     : row_indices(row_indices), sparse_table(sparse_table), aggs(aggs)
+//   {
+//   }
+
+//   __device__ void operator()(cudf::size_type i)
+//   {
+//     auto key_idx = row_indices[i];
+//     for (auto col_idx = 0; col_idx < sparse_table.num_columns(); col_idx++) {
+//       cudf::detail::dispatch_type_and_aggregation(sparse_table.column(col_idx).type(),
+//                                                   aggs[col_idx],
+//                                                   gqe::initialize_gmem{},
+//                                                   sparse_table.column(col_idx),
+//                                                   key_idx);
+//     }
+//   }
+// };
+
+// TODO: see diff
+
+// template <typename GlobalSetType>
+// auto create_sparse_results_table(cudf::table_view const& flattened_values,
+//                                  const cudf::aggregation::Kind* d_aggs,
+//                                  std::vector<cudf::aggregation::Kind> aggs,
+//                                  bool direct_aggregations,
+//                                  GlobalSetType const& global_set,
+//                                  rmm::device_uvector<cudf::size_type>& populated_keys,
+//                                  rmm::cuda_stream_view stream)
+// {
+//   // TODO single allocation - room for performance improvement
+//   std::vector<std::unique_ptr<cudf::column>> sparse_columns;
+//   std::transform(
+//     flattened_values.begin(),
+//     flattened_values.end(),
+//     aggs.begin(),
+//     std::back_inserter(sparse_columns),
+//     [stream](auto const& col, auto const& agg) {
+//       bool nullable = (agg == cudf::aggregation::COUNT_VALID or agg ==
+//       cudf::aggregation::COUNT_ALL)
+//                         ? false
+//                         : (col.has_nulls() or agg == cudf::aggregation::VARIANCE or
+//                            agg == cudf::aggregation::STD);
+//       auto mask_flag = (nullable) ? cudf::mask_state::ALL_NULL : cudf::mask_state::UNALLOCATED;
+
+//       auto col_type = cudf::is_dictionary(col.type())
+//                         ? cudf::dictionary_column_view(col).keys().type()
+//                         : col.type();
+
+//       auto target_type = cudf::detail::target_type(col_type, agg);
+//       return make_fixed_width_column(
+//         cudf::detail::target_type(col_type, agg), col.size(), mask_flag, stream);
+//     });
+
+//   cudf::table sparse_table(std::move(sparse_columns));
+
+//   // If no direct aggregations, initialize the sparse table
+//   // only for the keys inserted in global hash set
+//   if (!direct_aggregations) {
+//     auto d_sparse_table = cudf::mutable_table_device_view::create(sparse_table, stream);
+//     extract_populated_keys(global_set, populated_keys, stream);
+//     thrust::for_each_n(rmm::exec_policy(stream),
+//                        thrust::make_counting_iterator(0),
+//                        populated_keys.size(),
+//                        initialize_sparse_table{populated_keys.data(), *d_sparse_table,
+//                        d_aggs});
+//   }
+
+//   // Else initialise the whole table
+//   else {
+//     cudf::mutable_table_view sparse_table_view = sparse_table.mutable_view();
+//     cudf::detail::initialize_with_identity(sparse_table_view, aggs, stream);
+//   }
+
+//   return sparse_table;
+// }
+
+int find_num_sms()
+{
+  int dev_id{-1};
+  CUDF_CUDA_TRY(cudaGetDevice(&dev_id));
+
+  int num_sms{-1};
+  CUDF_CUDA_TRY(cudaDeviceGetAttribute(&num_sms, cudaDevAttrMultiProcessorCount, dev_id));
+
+  return num_sms;
+}
+
+template <typename FuncType>
+int find_grid_size(FuncType func, int block_size, cudf::size_type num_input_rows, int num_sms)
+{
+  int max_active_blocks{-1};
+  CUDF_CUDA_TRY(
+    cudaOccupancyMaxActiveBlocksPerMultiprocessor(&max_active_blocks, func, block_size, 0));
+
+  auto max_grid_size       = max_active_blocks * num_sms;
+  int needed_active_blocks = divide_round_up(num_input_rows, block_size);
+  return std::min(max_grid_size, needed_active_blocks);
+}
+
+template <typename FuncType>
+size_t find_shmem_size(FuncType func, int block_size, int grid_size, int num_sms)
+{
+  auto active_blocks_per_sm = divide_round_up(grid_size, num_sms);
+
+  size_t dynamic_smem_size;
+  CUDF_CUDA_TRY(cudaOccupancyAvailableDynamicSMemPerBlock(
+    &dynamic_smem_size, func, active_blocks_per_sm, block_size));
+  return get_previous_multiple_of_8(0.5 * dynamic_smem_size);
+}
+
+template <cudf::size_type shared_set_num_elements, cudf::size_type cardinality_threshold>
+void launch_compute_aggregates(int block_size,
+                               int grid_size,
+                               int num_sms,
+                               cudf::size_type* local_mapping_index,
+                               cudf::size_type* global_mapping_index,
+                               cudf::size_type* block_cardinality,
+                               cudf::table_device_view input_values,
+                               cudf::mutable_table_device_view output_values,
+                               cudf::size_type num_input_rows,
+                               cudf::aggregation::Kind const* aggs,
+                               rmm::cuda_stream_view stream,
+                               bitmask_type const* __restrict__ row_bitmask,
+                               bool skip_rows_with_nulls)
+{
+  auto compute_aggregates_fn_ptr =
+    compute_aggregates<shared_set_num_elements, cardinality_threshold>;
+  size_t d_shmem_size = find_shmem_size(compute_aggregates_fn_ptr, block_size, grid_size, num_sms);
+
+  // For each aggregation, need two pointers to arrays in shmem
+  // One where the aggregation is performed, one indicating the validity of the aggregation
+  auto shmem_agg_pointer_size =
+    round_to_multiple_of_8(sizeof(std::byte*) * output_values.num_columns());
+  // The rest of shmem is utilized for the actual arrays in shmem
+  auto shmem_agg_size = d_shmem_size - shmem_agg_pointer_size * 2;
+
+  compute_aggregates<shared_set_num_elements, cardinality_threshold>
+    <<<grid_size, block_size, d_shmem_size, stream>>>(local_mapping_index,
+                                                      global_mapping_index,
+                                                      block_cardinality,
+                                                      input_values,
+                                                      output_values,
+                                                      num_input_rows,
+                                                      aggs,
+                                                      shmem_agg_size,
+                                                      shmem_agg_pointer_size,
+                                                      row_bitmask,
+                                                      skip_rows_with_nulls);
+}
 
 /**
  * @brief List of aggregation operations that can be computed with a hash-based
@@ -453,6 +1013,7 @@ auto create_sparse_results_table(table_view const& flattened_values,
   return sparse_table;
 }
 
+// TODO: what about multipass
 /**
  * @brief Computes all aggregations from `requests` that require a single pass
  * over the data and stores the results in `sparse_results`
@@ -519,6 +1080,150 @@ rmm::device_uvector<size_type> extract_populated_keys(SetType const& key_set,
   return populated_keys;
 }
 
+template <typename SetType, typename KeyEqual, typename RowHasher>
+void compute_single_pass_set_aggs(
+  cudf::table_view const& keys,
+  cudf::host_span<cudf::groupby::aggregation_request const> requests,
+  cudf::detail::result_cache* sparse_results,
+  SetType& global_set,
+  bool keys_have_nulls,
+  null_policy include_null_keys,
+  rmm::cuda_stream_view stream,
+  cuco::empty_key<cudf::size_type> empty_key_sentinel,
+  KeyEqual d_key_equal,
+  RowHasher d_row_hash)
+{
+  // TODO: change flatten function
+  auto const [flattened_values, agg_kinds, aggs] = flatten_single_pass_aggs(requests);
+
+  auto const num_input_rows = keys.num_rows();
+  auto d_values             = cudf::table_device_view::create(flattened_values, stream);
+  auto const d_aggs         = cudf::detail::make_device_uvector_async(
+    agg_kinds, stream, rmm::mr::get_current_device_resource());
+  auto const skip_key_rows_with_nulls =
+    keys_have_nulls and include_null_keys == null_policy::EXCLUDE;
+
+  auto row_bitmask =
+    skip_key_rows_with_nulls
+      ? cudf::detail::bitmask_and(keys, stream, rmm::mr::get_current_device_resource()).first
+      : rmm::device_buffer{};
+
+  auto constexpr window_size                      = 1;
+  constexpr int block_size                        = 128;
+  constexpr cudf::size_type cardinality_threshold = 128;
+
+  // We add additional `block_size`, because after the number of elements in the local hash set
+  // exceeds the threshold, all threads in the thread block can still insert one more element.
+  constexpr cudf::size_type shared_set_num_elements = cardinality_threshold + block_size;
+  constexpr float load_factor                       = 0.7;
+  constexpr std::size_t shared_set_size             = (1.0 / load_factor) * shared_set_num_elements;
+
+  using extent_type            = cuco::extent<cudf::size_type, shared_set_size>;
+  using shared_set_type        = cuco::static_set<cudf::size_type,
+                                           extent_type,
+                                           cuda::thread_scope_block,
+                                           decltype(d_key_equal),
+                                           probing_scheme_type,
+                                           cuco::cuda_allocator<cudf::size_type>,
+                                           cuco::storage<window_size>>;
+  using shared_set_ref_type    = typename shared_set_type::ref_type<>;
+  auto constexpr window_extent = cuco::make_window_extent<shared_set_ref_type>(extent_type{});
+
+  auto global_set_ref = global_set.ref(cuco::op::insert_and_find);
+
+  int num_sms                         = find_num_sms();
+  auto compute_mapping_indices_fn_ptr = compute_mapping_indices<shared_set_ref_type,
+                                                                shared_set_num_elements,
+                                                                cardinality_threshold,
+                                                                decltype(global_set_ref),
+                                                                KeyEqual,
+                                                                RowHasher,
+                                                                decltype(window_extent)>;
+  int grid_size =
+    find_grid_size(compute_mapping_indices_fn_ptr, block_size, num_input_rows, num_sms);
+
+  // 'local_mapping_index' maps from the global row index of the input table to the row index of
+  // the local pre-aggregate table
+  rmm::device_uvector<cudf::size_type> local_mapping_index(num_input_rows, stream);
+
+  // 'global_mapping_index' maps from  the local pre-aggregate table to the row index of
+  // global aggregate table
+  rmm::device_uvector<cudf::size_type> global_mapping_index(grid_size * shared_set_num_elements,
+                                                            stream);
+  rmm::device_uvector<cudf::size_type> block_cardinality(grid_size, stream);
+
+  rmm::device_scalar<bool> direct_aggregations(false, stream);
+
+  compute_mapping_indices<shared_set_ref_type, shared_set_num_elements, cardinality_threshold>
+    <<<grid_size, block_size, 0, stream>>>(global_set_ref,
+                                           num_input_rows,
+                                           window_extent,
+                                           empty_key_sentinel,
+                                           d_key_equal,
+                                           d_row_hash,
+                                           local_mapping_index.data(),
+                                           global_mapping_index.data(),
+                                           block_cardinality.data(),
+                                           direct_aggregations.data(),
+                                           static_cast<bitmask_type*>(row_bitmask.data()),
+                                           skip_key_rows_with_nulls);
+
+  stream.synchronize();
+
+  // 'populated_keys' contains inserted row_indices (keys) of global hash set
+  rmm::device_uvector<cudf::size_type> populated_keys(keys.num_rows(), stream);
+
+  // TODO: change
+  cudf::table sparse_table = create_sparse_results_table(flattened_values, agg_kinds, stream);
+
+  auto d_sparse_table = cudf::mutable_table_device_view::create(sparse_table, stream);
+
+  // TODO: rearrange arguments
+  // TODO: too many arguments, consider making functors?
+  launch_compute_aggregates<shared_set_num_elements, cardinality_threshold>(
+    block_size,
+    grid_size,
+    num_sms,
+    local_mapping_index.data(),
+    global_mapping_index.data(),
+    block_cardinality.data(),
+    *d_values,
+    *d_sparse_table,
+    num_input_rows,
+    d_aggs.data(),
+    stream,
+    static_cast<bitmask_type*>(row_bitmask.data()),
+    skip_key_rows_with_nulls);
+
+  if (direct_aggregations.value(stream)) {
+    int stride = block_size * grid_size;
+    thrust::for_each_n(rmm::exec_policy(stream),
+                       thrust::make_counting_iterator(0),
+                       keys.num_rows(),
+                       compute_direct_aggregates{global_set_ref,
+                                                 *d_values,
+                                                 *d_sparse_table,
+                                                 d_aggs.data(),
+                                                 static_cast<bitmask_type*>(row_bitmask.data()),
+                                                 skip_key_rows_with_nulls,
+                                                 block_cardinality.data(),
+                                                 stride,
+                                                 block_size,
+                                                 cardinality_threshold});
+    extract_populated_keys(global_set, populated_keys, stream);
+  }
+
+  auto sparse_result_cols = sparse_table.release();
+  for (size_t i = 0; i < aggs.size(); i++) {
+    // Note that the cache will make a copy of this temporary aggregation
+    sparse_results->add_result(
+      flattened_values.column(i), *aggs[i], std::move(sparse_result_cols[i]));
+  }
+
+  // TODO: fix later
+  // return populated_keys;
+}
+
 /**
  * @brief Computes groupby using hash table.
  *
@@ -567,9 +1272,10 @@ std::unique_ptr<table> groupby(table_view const& keys,
   cudf::detail::result_cache sparse_results(requests.size());
 
   auto const comparator_helper = [&](auto const d_key_equal) {
-    auto const set = cuco::static_set{num_keys,
+    auto empty_key_sentinel = cuco::empty_key{cudf::detail::CUDF_SIZE_TYPE_SENTINEL};
+    auto const set          = cuco::static_set{num_keys,
                                       0.5,  // desired load factor
-                                      cuco::empty_key{cudf::detail::CUDF_SIZE_TYPE_SENTINEL},
+                                      empty_key_sentinel,
                                       d_key_equal,
                                       probing_scheme_type{d_row_hash},
                                       cuco::thread_scope_device,
@@ -578,13 +1284,16 @@ std::unique_ptr<table> groupby(table_view const& keys,
                                       stream.value()};
 
     // Compute all single pass aggs first
-    compute_single_pass_aggs(keys,
-                             requests,
-                             &sparse_results,
-                             set.ref(cuco::insert_and_find),
-                             keys_have_nulls,
-                             include_null_keys,
-                             stream);
+    compute_single_pass_set_aggs(keys,
+                                 requests,
+                                 &sparse_results,
+                                 set,
+                                 keys_have_nulls,
+                                 include_null_keys,
+                                 stream,
+                                 empty_key_sentinel,
+                                 d_key_equal,
+                                 d_row_hash);
 
     // Extract the populated indices from the hash set and create a gather map.
     // Gathering using this map from sparse results will give dense results.
@@ -611,6 +1320,7 @@ std::unique_ptr<table> groupby(table_view const& keys,
   };
 
   if (cudf::detail::has_nested_columns(keys)) {
+    // TODO: fix
     auto const d_key_equal = comparator.equal_to<true>(has_null, null_keys_are_equal);
     return comparator_helper(d_key_equal);
   } else {
