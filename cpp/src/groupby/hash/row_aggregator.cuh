@@ -14,6 +14,9 @@
  * limitations under the License.
  */
 
+// TODO: move this to include/cudf/detail/aggregation/aggregation.cuh
+// TODO: Can i do this in a better way?
+
 #pragma once
 
 #include <cudf/detail/aggregation/aggregation.cuh>
@@ -23,7 +26,11 @@
 #include <cudf/utilities/traits.hpp>
 #include <cudf/wrappers/dictionary.hpp>
 
-namespace gqe {
+namespace cudf {
+namespace groupby {
+namespace detail {
+namespace hash {
+
 template <typename Source,
           cudf::aggregation::Kind k,
           bool target_has_nulls,
@@ -1003,4 +1010,33 @@ struct initialize_gmem {
   }
 };
 
-}  // namespace gqe
+// TODO: here?
+struct initialize_sparse_table {
+  cudf::size_type const* row_indices;
+  cudf::mutable_table_device_view sparse_table;
+  cudf::aggregation::Kind const* __restrict__ aggs;
+
+  initialize_sparse_table(cudf::size_type const* row_indices,
+                          cudf::mutable_table_device_view sparse_table,
+                          cudf::aggregation::Kind const* aggs)
+    : row_indices(row_indices), sparse_table(sparse_table), aggs(aggs)
+  {
+  }
+
+  __device__ void operator()(cudf::size_type i)
+  {
+    auto key_idx = row_indices[i];
+    for (auto col_idx = 0; col_idx < sparse_table.num_columns(); col_idx++) {
+      cudf::detail::dispatch_type_and_aggregation(sparse_table.column(col_idx).type(),
+                                                  aggs[col_idx],
+                                                  initialize_gmem{},
+                                                  sparse_table.column(col_idx),
+                                                  key_idx);
+    }
+  }
+};
+
+}  // namespace hash
+}  // namespace detail
+}  // namespace groupby
+}  // namespace cudf
