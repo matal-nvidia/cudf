@@ -117,22 +117,6 @@ struct compute_single_pass_aggs_fn {
   }
 };
 
-// TODO: they might have something similar
-template <typename type, std::enable_if_t<std::is_integral_v<type>>* = nullptr>
-constexpr __device__ __host__ type divide_round_up(type dividend, type divisor)
-{
-  assert(divisor != 0);
-
-  return dividend / divisor + (dividend % divisor != 0);
-}
-
-__device__ __host__ size_t round_to_multiple_of_8(size_t num)
-{
-  return (num / 8 + (num % 8 != 0)) * 8;
-}
-
-size_t get_previous_multiple_of_8(size_t number) { return number / 8 * 8; }
-
 template <typename SetType>
 __device__ cudf::size_type find_local_mapping(cudf::size_type cur_idx,
                                               cudf::size_type num_input_rows,

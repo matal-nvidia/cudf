@@ -123,7 +123,6 @@ auto create_sparse_results_table(cudf::table_view const& flattened_values,
   return sparse_table;
 }
 
-// TODO: see where cudf stores this information?
 int find_num_sms()
 {
   int dev_id{-1};
@@ -155,7 +154,7 @@ size_t find_shmem_size(FuncType func, int block_size, int grid_size, int num_sms
   size_t dynamic_smem_size;
   CUDF_CUDA_TRY(cudaOccupancyAvailableDynamicSMemPerBlock(
     &dynamic_smem_size, func, active_blocks_per_sm, block_size));
-  return get_previous_multiple_of_8(0.5 * dynamic_smem_size);
+  return util::round_down_safe(dynamic_smem_size / 2, 8UL);
 }
 
 template <cudf::size_type shared_set_num_elements, cudf::size_type cardinality_threshold>
