@@ -50,6 +50,10 @@
 #define NVCOMP_ZSTD_DECOMP_IS_STABLE(MAJOR, MINOR, PATCH) \
   (MAJOR > 2 or (MAJOR == 2 and MINOR > 3) or (MAJOR == 2 and MINOR == 3 and PATCH >= 2))
 
+#define NVCOMP_MAJOR_VERSION 4
+#define NVCOMP_MINOR_VERSION 0
+#define NVCOMP_PATCH_VERSION 0
+
 namespace cudf::io::nvcomp {
 
 // Dispatcher for nvcompBatched<format>DecompressGetTempSizeEx

@@ -185,7 +185,18 @@ include(cmake/thirdparty/get_jitify.cmake)
 # find NVTX
 include(cmake/thirdparty/get_nvtx.cmake)
 # find nvCOMP
-include(cmake/thirdparty/get_nvcomp.cmake)
+include_directories(${NVCOMP_DIR}/include)
+set(CMAKE_PREFIX_PATH ${NVCOMP_DIR} ${CMAKE_PREFIX_PATH})
+rapids_find_package(
+  nvcomp CONFIG REQUIRED
+  BUILD_EXPORT_SET cudf-exports
+  INSTALL_EXPORT_SET cudf-exports USE_PROPRIETARY_BINARY ${CUDF_USE_PROPRIETARY_NVCOMP}
+)
+
+# Per-thread default stream
+if(TARGET nvcomp AND CUDF_USE_PER_THREAD_DEFAULT_STREAM)
+  target_compile_definitions(nvcomp PRIVATE CUDA_API_PER_THREAD_DEFAULT_STREAM)
+endif()
 # find CCCL before rmm so that we get cudf's patched version of CCCL
 include(cmake/thirdparty/get_cccl.cmake)
 # find rmm
