@@ -521,27 +521,27 @@ CUDF_HOST_DEVICE __forceinline__ constexpr decltype(auto) type_dispatcher(cudf::
     case type_id::DURATION_NANOSECONDS:
       return f.template operator()<typename IdTypeMap<type_id::DURATION_NANOSECONDS>::type>(
         std::forward<Ts>(args)...);
-    case type_id::DICTIONARY32:
-      return f.template operator()<typename IdTypeMap<type_id::DICTIONARY32>::type>(
-        std::forward<Ts>(args)...);
+    // case type_id::DICTIONARY32:
+    //   return f.template operator()<typename IdTypeMap<type_id::DICTIONARY32>::type>(
+    //     std::forward<Ts>(args)...);
     case type_id::STRING:
       return f.template operator()<typename IdTypeMap<type_id::STRING>::type>(
         std::forward<Ts>(args)...);
-    case type_id::LIST:
-      return f.template operator()<typename IdTypeMap<type_id::LIST>::type>(
-        std::forward<Ts>(args)...);
-    case type_id::DECIMAL32:
-      return f.template operator()<typename IdTypeMap<type_id::DECIMAL32>::type>(
-        std::forward<Ts>(args)...);
-    case type_id::DECIMAL64:
-      return f.template operator()<typename IdTypeMap<type_id::DECIMAL64>::type>(
-        std::forward<Ts>(args)...);
-    case type_id::DECIMAL128:
-      return f.template operator()<typename IdTypeMap<type_id::DECIMAL128>::type>(
-        std::forward<Ts>(args)...);
-    case type_id::STRUCT:
-      return f.template operator()<typename IdTypeMap<type_id::STRUCT>::type>(
-        std::forward<Ts>(args)...);
+    // case type_id::LIST:
+    //   return f.template operator()<typename IdTypeMap<type_id::LIST>::type>(
+    //     std::forward<Ts>(args)...);
+    // case type_id::DECIMAL32:
+    //   return f.template operator()<typename IdTypeMap<type_id::DECIMAL32>::type>(
+    //     std::forward<Ts>(args)...);
+    // case type_id::DECIMAL64:
+    //   return f.template operator()<typename IdTypeMap<type_id::DECIMAL64>::type>(
+    //     std::forward<Ts>(args)...);
+    // case type_id::DECIMAL128:
+    //   return f.template operator()<typename IdTypeMap<type_id::DECIMAL128>::type>(
+    //     std::forward<Ts>(args)...);
+    // case type_id::STRUCT:
+    //   return f.template operator()<typename IdTypeMap<type_id::STRUCT>::type>(
+    //     std::forward<Ts>(args)...);
     default: {
 #ifndef __CUDA_ARCH__
       CUDF_FAIL("Invalid type_id.");
@@ -626,4 +626,4 @@ CUDF_HOST_DEVICE __forceinline__ constexpr decltype(auto) double_type_dispatcher
 std::string type_to_name(data_type type);
 
 /** @} */  // end of group
-}  // namespace CUDF_EXPORT cudf
+}  // namespace cudf
