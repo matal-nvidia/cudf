@@ -96,9 +96,9 @@ CUDF_HOST_DEVICE inline constexpr void ast_operator_dispatcher(ast_operator op, 
     case ast_operator::PYMOD:
       f.template operator()<ast_operator::PYMOD>(std::forward<Ts>(args)...);
       break;
-    case ast_operator::POW:
-      f.template operator()<ast_operator::POW>(std::forward<Ts>(args)...);
-      break;
+    // case ast_operator::POW:
+    //   f.template operator()<ast_operator::POW>(std::forward<Ts>(args)...);
+    //   break;
     case ast_operator::EQUAL:
       f.template operator()<ast_operator::EQUAL>(std::forward<Ts>(args)...);
       break;
@@ -147,54 +147,54 @@ CUDF_HOST_DEVICE inline constexpr void ast_operator_dispatcher(ast_operator op, 
     case ast_operator::IS_NULL:
       f.template operator()<ast_operator::IS_NULL>(std::forward<Ts>(args)...);
       break;
-    case ast_operator::SIN:
-      f.template operator()<ast_operator::SIN>(std::forward<Ts>(args)...);
-      break;
-    case ast_operator::COS:
-      f.template operator()<ast_operator::COS>(std::forward<Ts>(args)...);
-      break;
-    case ast_operator::TAN:
-      f.template operator()<ast_operator::TAN>(std::forward<Ts>(args)...);
-      break;
-    case ast_operator::ARCSIN:
-      f.template operator()<ast_operator::ARCSIN>(std::forward<Ts>(args)...);
-      break;
-    case ast_operator::ARCCOS:
-      f.template operator()<ast_operator::ARCCOS>(std::forward<Ts>(args)...);
-      break;
-    case ast_operator::ARCTAN:
-      f.template operator()<ast_operator::ARCTAN>(std::forward<Ts>(args)...);
-      break;
-    case ast_operator::SINH:
-      f.template operator()<ast_operator::SINH>(std::forward<Ts>(args)...);
-      break;
-    case ast_operator::COSH:
-      f.template operator()<ast_operator::COSH>(std::forward<Ts>(args)...);
-      break;
-    case ast_operator::TANH:
-      f.template operator()<ast_operator::TANH>(std::forward<Ts>(args)...);
-      break;
-    case ast_operator::ARCSINH:
-      f.template operator()<ast_operator::ARCSINH>(std::forward<Ts>(args)...);
-      break;
-    case ast_operator::ARCCOSH:
-      f.template operator()<ast_operator::ARCCOSH>(std::forward<Ts>(args)...);
-      break;
-    case ast_operator::ARCTANH:
-      f.template operator()<ast_operator::ARCTANH>(std::forward<Ts>(args)...);
-      break;
-    case ast_operator::EXP:
-      f.template operator()<ast_operator::EXP>(std::forward<Ts>(args)...);
-      break;
-    case ast_operator::LOG:
-      f.template operator()<ast_operator::LOG>(std::forward<Ts>(args)...);
-      break;
-    case ast_operator::SQRT:
-      f.template operator()<ast_operator::SQRT>(std::forward<Ts>(args)...);
-      break;
-    case ast_operator::CBRT:
-      f.template operator()<ast_operator::CBRT>(std::forward<Ts>(args)...);
-      break;
+    // case ast_operator::SIN:
+    //   f.template operator()<ast_operator::SIN>(std::forward<Ts>(args)...);
+    //   break;
+    // case ast_operator::COS:
+    //   f.template operator()<ast_operator::COS>(std::forward<Ts>(args)...);
+    //   break;
+    // case ast_operator::TAN:
+    //   f.template operator()<ast_operator::TAN>(std::forward<Ts>(args)...);
+    //   break;
+    // case ast_operator::ARCSIN:
+    //   f.template operator()<ast_operator::ARCSIN>(std::forward<Ts>(args)...);
+    //   break;
+    // case ast_operator::ARCCOS:
+    //   f.template operator()<ast_operator::ARCCOS>(std::forward<Ts>(args)...);
+    //   break;
+    // case ast_operator::ARCTAN:
+    //   f.template operator()<ast_operator::ARCTAN>(std::forward<Ts>(args)...);
+    //   break;
+    // case ast_operator::SINH:
+    //   f.template operator()<ast_operator::SINH>(std::forward<Ts>(args)...);
+    //   break;
+    // case ast_operator::COSH:
+    //   f.template operator()<ast_operator::COSH>(std::forward<Ts>(args)...);
+    //   break;
+    // case ast_operator::TANH:
+    //   f.template operator()<ast_operator::TANH>(std::forward<Ts>(args)...);
+    //   break;
+    // case ast_operator::ARCSINH:
+    //   f.template operator()<ast_operator::ARCSINH>(std::forward<Ts>(args)...);
+    //   break;
+    // case ast_operator::ARCCOSH:
+    //   f.template operator()<ast_operator::ARCCOSH>(std::forward<Ts>(args)...);
+    //   break;
+    // case ast_operator::ARCTANH:
+    //   f.template operator()<ast_operator::ARCTANH>(std::forward<Ts>(args)...);
+    //   break;
+    // case ast_operator::EXP:
+    //   f.template operator()<ast_operator::EXP>(std::forward<Ts>(args)...);
+    //   break;
+    // case ast_operator::LOG:
+    //   f.template operator()<ast_operator::LOG>(std::forward<Ts>(args)...);
+    //   break;
+    // case ast_operator::SQRT:
+    //   f.template operator()<ast_operator::SQRT>(std::forward<Ts>(args)...);
+    //   break;
+    // case ast_operator::CBRT:
+    //   f.template operator()<ast_operator::CBRT>(std::forward<Ts>(args)...);
+    //   break;
     case ast_operator::CEIL:
       f.template operator()<ast_operator::CEIL>(std::forward<Ts>(args)...);
       break;
@@ -714,8 +714,7 @@ struct operator_functor<ast_operator::EXP, false> {
 template <>
 struct operator_functor<ast_operator::LOG, false> {
   static constexpr auto arity{1};
-
-  template <typename InputT>
+  operator_functor template <typename InputT>
   __device__ inline auto operator()(InputT input) -> decltype(std::log(input))
   {
     return std::log(input);
