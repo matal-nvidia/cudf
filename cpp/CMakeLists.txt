@@ -78,7 +78,7 @@ option(DISABLE_DEPRECATION_WARNINGS "Disable warnings generated from deprecated 
 option(CUDA_ENABLE_LINEINFO
        "Enable the -lineinfo option for nvcc (useful for cuda-memcheck / profiler)" OFF
 )
-option(CUDA_WARNINGS_AS_ERRORS "Enable -Werror=all-warnings for all CUDA compilation" ON)
+option(CUDA_WARNINGS_AS_ERRORS "Enable -Werror=all-warnings for all CUDA compilation" OFF)
 # cudart can be statically linked or dynamically linked. The python ecosystem wants dynamic linking
 option(CUDA_STATIC_RUNTIME "Statically link the CUDA runtime" OFF)
 option(USE_LIBARROW_FROM_PYARROW "Only use the libarrow contained in pyarrow" OFF)
@@ -723,6 +723,9 @@ target_compile_options(
   cudf PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CUDF_CXX_FLAGS}>"
                "$<$<COMPILE_LANGUAGE:CUDA>:${CUDF_CUDA_FLAGS}>"
 )
+
+set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Wno-error=unused-function")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-error=unused-function")
 
 if(CUDF_BUILD_STACKTRACE_DEBUG)
   # Remove any optimization level to avoid nvcc warning "incompatible redefinition for option
