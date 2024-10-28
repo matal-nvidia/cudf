@@ -530,15 +530,15 @@ CUDF_HOST_DEVICE __forceinline__ constexpr decltype(auto) type_dispatcher(cudf::
     case type_id::LIST:
       return f.template operator()<typename IdTypeMap<type_id::LIST>::type>(
         std::forward<Ts>(args)...);
-    // case type_id::DECIMAL32:
-    //   return f.template operator()<typename IdTypeMap<type_id::DECIMAL32>::type>(
-    //     std::forward<Ts>(args)...);
-    // case type_id::DECIMAL64:
-    //   return f.template operator()<typename IdTypeMap<type_id::DECIMAL64>::type>(
-    //     std::forward<Ts>(args)...);
-    // case type_id::DECIMAL128:
-    //   return f.template operator()<typename IdTypeMap<type_id::DECIMAL128>::type>(
-    //     std::forward<Ts>(args)...);
+    case type_id::DECIMAL32:
+      return f.template operator()<typename IdTypeMap<type_id::DECIMAL32>::type>(
+        std::forward<Ts>(args)...);
+    case type_id::DECIMAL64:
+      return f.template operator()<typename IdTypeMap<type_id::DECIMAL64>::type>(
+        std::forward<Ts>(args)...);
+    case type_id::DECIMAL128:
+      return f.template operator()<typename IdTypeMap<type_id::DECIMAL128>::type>(
+        std::forward<Ts>(args)...);
     case type_id::STRUCT:
       return f.template operator()<typename IdTypeMap<type_id::STRUCT>::type>(
         std::forward<Ts>(args)...);

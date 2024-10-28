@@ -213,15 +213,15 @@ CUDF_HOST_DEVICE inline constexpr void ast_operator_dispatcher(ast_operator op, 
     case ast_operator::NOT:
       f.template operator()<ast_operator::NOT>(std::forward<Ts>(args)...);
       break;
-    case ast_operator::CAST_TO_INT64:
-      f.template operator()<ast_operator::CAST_TO_INT64>(std::forward<Ts>(args)...);
-      break;
-    case ast_operator::CAST_TO_UINT64:
-      f.template operator()<ast_operator::CAST_TO_UINT64>(std::forward<Ts>(args)...);
-      break;
-    case ast_operator::CAST_TO_FLOAT64:
-      f.template operator()<ast_operator::CAST_TO_FLOAT64>(std::forward<Ts>(args)...);
-      break;
+    // case ast_operator::CAST_TO_INT64:
+    //   f.template operator()<ast_operator::CAST_TO_INT64>(std::forward<Ts>(args)...);
+    //   break;
+    // case ast_operator::CAST_TO_UINT64:
+    //   f.template operator()<ast_operator::CAST_TO_UINT64>(std::forward<Ts>(args)...);
+    //   break;
+    // case ast_operator::CAST_TO_FLOAT64:
+    //   f.template operator()<ast_operator::CAST_TO_FLOAT64>(std::forward<Ts>(args)...);
+    //   break;
     default: {
 #ifndef __CUDA_ARCH__
       CUDF_FAIL("Invalid operator.");
