@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2023, NVIDIA CORPORATION.
+ * Copyright (c) 2021-2024, NVIDIA CORPORATION.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,6 +36,97 @@ namespace cudf {
 namespace ast {
 
 namespace detail {
+
+// This pragma disables a compiler warning that complains about the valid usage
+// of calling a __host__ functor from this function which is __host__ __device__
+#ifdef __CUDACC__
+#pragma nv_exec_check_disable
+#endif
+template <template <cudf::type_id> typename IdTypeMap = id_to_type_impl,
+          typename Functor,
+          typename... Ts>
+CUDF_HOST_DEVICE __forceinline__ constexpr decltype(auto) evaluator_type_dispatcher(
+  cudf::data_type dtype, Functor f, Ts&&... args)
+{
+  switch (dtype.id()) {
+    case type_id::INT8:
+      return f.template operator()<typename IdTypeMap<type_id::INT8>::type>(
+        std::forward<Ts>(args)...);
+    case type_id::INT16:
+      return f.template operator()<typename IdTypeMap<type_id::INT16>::type>(
+        std::forward<Ts>(args)...);
+    case type_id::INT32:
+      return f.template operator()<typename IdTypeMap<type_id::INT32>::type>(
+        std::forward<Ts>(args)...);
+    case type_id::INT64:
+      return f.template operator()<typename IdTypeMap<type_id::INT64>::type>(
+        std::forward<Ts>(args)...);
+    case type_id::UINT8:
+      return f.template operator()<typename IdTypeMap<type_id::UINT8>::type>(
+        std::forward<Ts>(args)...);
+    case type_id::UINT16:
+      return f.template operator()<typename IdTypeMap<type_id::UINT16>::type>(
+        std::forward<Ts>(args)...);
+    case type_id::UINT32:
+      return f.template operator()<typename IdTypeMap<type_id::UINT32>::type>(
+        std::forward<Ts>(args)...);
+    case type_id::UINT64:
+      return f.template operator()<typename IdTypeMap<type_id::UINT64>::type>(
+        std::forward<Ts>(args)...);
+    case type_id::FLOAT32:
+      return f.template operator()<typename IdTypeMap<type_id::FLOAT32>::type>(
+        std::forward<Ts>(args)...);
+    case type_id::FLOAT64:
+      return f.template operator()<typename IdTypeMap<type_id::FLOAT64>::type>(
+        std::forward<Ts>(args)...);
+    case type_id::BOOL8:
+      return f.template operator()<typename IdTypeMap<type_id::BOOL8>::type>(
+        std::forward<Ts>(args)...);
+    case type_id::TIMESTAMP_DAYS:
+      return f.template operator()<typename IdTypeMap<type_id::TIMESTAMP_DAYS>::type>(
+        std::forward<Ts>(args)...);
+    case type_id::TIMESTAMP_SECONDS:
+      return f.template operator()<typename IdTypeMap<type_id::TIMESTAMP_SECONDS>::type>(
+        std::forward<Ts>(args)...);
+    case type_id::TIMESTAMP_MILLISECONDS:
+      return f.template operator()<typename IdTypeMap<type_id::TIMESTAMP_MILLISECONDS>::type>(
+        std::forward<Ts>(args)...);
+    case type_id::TIMESTAMP_MICROSECONDS:
+      return f.template operator()<typename IdTypeMap<type_id::TIMESTAMP_MICROSECONDS>::type>(
+        std::forward<Ts>(args)...);
+    case type_id::TIMESTAMP_NANOSECONDS:
+      return f.template operator()<typename IdTypeMap<type_id::TIMESTAMP_NANOSECONDS>::type>(
+        std::forward<Ts>(args)...);
+    case type_id::DURATION_DAYS:
+      return f.template operator()<typename IdTypeMap<type_id::DURATION_DAYS>::type>(
+        std::forward<Ts>(args)...);
+    case type_id::DURATION_SECONDS:
+      return f.template operator()<typename IdTypeMap<type_id::DURATION_SECONDS>::type>(
+        std::forward<Ts>(args)...);
+    case type_id::DURATION_MILLISECONDS:
+      return f.template operator()<typename IdTypeMap<type_id::DURATION_MILLISECONDS>::type>(
+        std::forward<Ts>(args)...);
+    case type_id::DURATION_MICROSECONDS:
+      return f.template operator()<typename IdTypeMap<type_id::DURATION_MICROSECONDS>::type>(
+        std::forward<Ts>(args)...);
+    case type_id::DURATION_NANOSECONDS:
+      return f.template operator()<typename IdTypeMap<type_id::DURATION_NANOSECONDS>::type>(
+        std::forward<Ts>(args)...);
+    case type_id::DICTIONARY32:
+      return f.template operator()<typename IdTypeMap<type_id::DICTIONARY32>::type>(
+        std::forward<Ts>(args)...);
+    case type_id::STRING:
+      return f.template operator()<typename IdTypeMap<type_id::STRING>::type>(
+        std::forward<Ts>(args)...);
+    default: {
+#ifndef __CUDA_ARCH__
+      CUDF_FAIL("Invalid type_id.");
+#else
+      CUDF_UNREACHABLE("Invalid type_id.");
+#endif
+    }
+  }
+}
 
 /**
  * @brief A container for capturing the output of an evaluated expression.
@@ -463,15 +554,15 @@ struct expression_evaluator {
           plan.data_references[plan.operator_source_indices[operator_source_index++]];
         auto input_row_index =
           input.table_source == table_reference::LEFT ? left_row_index : right_row_index;
-        type_dispatcher(input.data_type,
-                        *this,
-                        output_object,
-                        input_row_index,
-                        input,
-                        output,
-                        output_row_index,
-                        op,
-                        thread_intermediate_storage);
+        evaluator_type_dispatcher(input.data_type,
+                                  *this,
+                                  output_object,
+                                  input_row_index,
+                                  input,
+                                  output,
+                                  output_row_index,
+                                  op,
+                                  thread_intermediate_storage);
       } else if (arity == 2) {
         // Binary operator
         auto const& lhs =
@@ -480,18 +571,18 @@ struct expression_evaluator {
           plan.data_references[plan.operator_source_indices[operator_source_index++]];
         auto const& output =
           plan.data_references[plan.operator_source_indices[operator_source_index++]];
-        type_dispatcher(lhs.data_type,
-                        detail::single_dispatch_binary_operator{},
-                        *this,
-                        output_object,
-                        left_row_index,
-                        right_row_index,
-                        lhs,
-                        rhs,
-                        output,
-                        output_row_index,
-                        op,
-                        thread_intermediate_storage);
+        evaluator_type_dispatcher(lhs.data_type,
+                                  detail::single_dispatch_binary_operator{},
+                                  *this,
+                                  output_object,
+                                  left_row_index,
+                                  right_row_index,
+                                  lhs,
+                                  rhs,
+                                  output,
+                                  output_row_index,
+                                  op,
+                                  thread_intermediate_storage);
       } else {
         CUDF_UNREACHABLE("Invalid operator arity.");
       }
