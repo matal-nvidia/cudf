@@ -90,12 +90,12 @@ CUDF_HOST_DEVICE inline constexpr void ast_operator_dispatcher(ast_operator op, 
     case ast_operator::FLOOR_DIV:
       f.template operator()<ast_operator::FLOOR_DIV>(std::forward<Ts>(args)...);
       break;
-    case ast_operator::MOD:
-      f.template operator()<ast_operator::MOD>(std::forward<Ts>(args)...);
-      break;
-    case ast_operator::PYMOD:
-      f.template operator()<ast_operator::PYMOD>(std::forward<Ts>(args)...);
-      break;
+    // case ast_operator::MOD:
+    //   f.template operator()<ast_operator::MOD>(std::forward<Ts>(args)...);
+    //   break;
+    // case ast_operator::PYMOD:
+    //   f.template operator()<ast_operator::PYMOD>(std::forward<Ts>(args)...);
+    //   break;
     // case ast_operator::POW:
     //   f.template operator()<ast_operator::POW>(std::forward<Ts>(args)...);
     //   break;
