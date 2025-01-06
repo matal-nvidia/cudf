@@ -55,7 +55,7 @@ namespace detail {
  * @param output_column The destination for the results of evaluating the expression.
  */
 template <cudf::size_type max_block_size, bool has_nulls>
-__launch_bounds__(max_block_size) CUDF_KERNEL
+__launch_bounds__(max_block_size, 12) CUDF_KERNEL
   void compute_column_kernel(table_device_view const table,
                              ast::detail::expression_device_view device_expression_data,
                              mutable_column_device_view output_column)
