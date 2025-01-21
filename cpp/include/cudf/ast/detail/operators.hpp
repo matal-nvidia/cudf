@@ -572,158 +572,158 @@ struct operator_functor<ast_operator::IS_NULL, false> {
   }
 };
 
-// template <>
-// struct operator_functor<ast_operator::SIN, false> {
-//   static constexpr auto arity{1};
+template <>
+struct operator_functor<ast_operator::SIN, false> {
+  static constexpr auto arity{1};
 
-//   template <typename InputT, std::enable_if_t<std::is_floating_point_v<InputT>>* = nullptr>
-//   __device__ inline auto operator()(InputT input) -> decltype(std::sin(input))
-//   {
-//     return std::sin(input);
-//   }
-// };
+  template <typename InputT, std::enable_if_t<std::is_floating_point_v<InputT>>* = nullptr>
+  __device__ inline auto operator()(InputT input) -> decltype(std::sin(input))
+  {
+    return std::sin(input);
+  }
+};
 
-// template <>
-// struct operator_functor<ast_operator::COS, false> {
-//   static constexpr auto arity{1};
+template <>
+struct operator_functor<ast_operator::COS, false> {
+  static constexpr auto arity{1};
 
-//   template <typename InputT, std::enable_if_t<std::is_floating_point_v<InputT>>* = nullptr>
-//   __device__ inline auto operator()(InputT input) -> decltype(std::cos(input))
-//   {
-//     return std::cos(input);
-//   }
-// };
+  template <typename InputT, std::enable_if_t<std::is_floating_point_v<InputT>>* = nullptr>
+  __device__ inline auto operator()(InputT input) -> decltype(std::cos(input))
+  {
+    return std::cos(input);
+  }
+};
 
-// template <>
-// struct operator_functor<ast_operator::TAN, false> {
-//   static constexpr auto arity{1};
+template <>
+struct operator_functor<ast_operator::TAN, false> {
+  static constexpr auto arity{1};
 
-//   template <typename InputT, std::enable_if_t<std::is_floating_point_v<InputT>>* = nullptr>
-//   __device__ inline auto operator()(InputT input) -> decltype(std::tan(input))
-//   {
-//     return std::tan(input);
-//   }
-// };
+  template <typename InputT, std::enable_if_t<std::is_floating_point_v<InputT>>* = nullptr>
+  __device__ inline auto operator()(InputT input) -> decltype(std::tan(input))
+  {
+    return std::tan(input);
+  }
+};
 
-// template <>
-// struct operator_functor<ast_operator::ARCSIN, false> {
-//   static constexpr auto arity{1};
+template <>
+struct operator_functor<ast_operator::ARCSIN, false> {
+  static constexpr auto arity{1};
 
-//   template <typename InputT, std::enable_if_t<std::is_floating_point_v<InputT>>* = nullptr>
-//   __device__ inline auto operator()(InputT input) -> decltype(std::asin(input))
-//   {
-//     return std::asin(input);
-//   }
-// };
+  template <typename InputT, std::enable_if_t<std::is_floating_point_v<InputT>>* = nullptr>
+  __device__ inline auto operator()(InputT input) -> decltype(std::asin(input))
+  {
+    return std::asin(input);
+  }
+};
 
-// template <>
-// struct operator_functor<ast_operator::ARCCOS, false> {
-//   static constexpr auto arity{1};
+template <>
+struct operator_functor<ast_operator::ARCCOS, false> {
+  static constexpr auto arity{1};
 
-//   template <typename InputT, std::enable_if_t<std::is_floating_point_v<InputT>>* = nullptr>
-//   __device__ inline auto operator()(InputT input) -> decltype(std::acos(input))
-//   {
-//     return std::acos(input);
-//   }
-// };
+  template <typename InputT, std::enable_if_t<std::is_floating_point_v<InputT>>* = nullptr>
+  __device__ inline auto operator()(InputT input) -> decltype(std::acos(input))
+  {
+    return std::acos(input);
+  }
+};
 
-// template <>
-// struct operator_functor<ast_operator::ARCTAN, false> {
-//   static constexpr auto arity{1};
+template <>
+struct operator_functor<ast_operator::ARCTAN, false> {
+  static constexpr auto arity{1};
 
-//   template <typename InputT, std::enable_if_t<std::is_floating_point_v<InputT>>* = nullptr>
-//   __device__ inline auto operator()(InputT input) -> decltype(std::atan(input))
-//   {
-//     return std::atan(input);
-//   }
-// };
+  template <typename InputT, std::enable_if_t<std::is_floating_point_v<InputT>>* = nullptr>
+  __device__ inline auto operator()(InputT input) -> decltype(std::atan(input))
+  {
+    return std::atan(input);
+  }
+};
 
-// template <>
-// struct operator_functor<ast_operator::SINH, false> {
-//   static constexpr auto arity{1};
+template <>
+struct operator_functor<ast_operator::SINH, false> {
+  static constexpr auto arity{1};
 
-//   template <typename InputT, std::enable_if_t<std::is_floating_point_v<InputT>>* = nullptr>
-//   __device__ inline auto operator()(InputT input) -> decltype(std::sinh(input))
-//   {
-//     return std::sinh(input);
-//   }
-// };
+  template <typename InputT, std::enable_if_t<std::is_floating_point_v<InputT>>* = nullptr>
+  __device__ inline auto operator()(InputT input) -> decltype(std::sinh(input))
+  {
+    return std::sinh(input);
+  }
+};
 
-// template <>
-// struct operator_functor<ast_operator::COSH, false> {
-//   static constexpr auto arity{1};
+template <>
+struct operator_functor<ast_operator::COSH, false> {
+  static constexpr auto arity{1};
 
-//   template <typename InputT, std::enable_if_t<std::is_floating_point_v<InputT>>* = nullptr>
-//   __device__ inline auto operator()(InputT input) -> decltype(std::cosh(input))
-//   {
-//     return std::cosh(input);
-//   }
-// };
+  template <typename InputT, std::enable_if_t<std::is_floating_point_v<InputT>>* = nullptr>
+  __device__ inline auto operator()(InputT input) -> decltype(std::cosh(input))
+  {
+    return std::cosh(input);
+  }
+};
 
-// template <>
-// struct operator_functor<ast_operator::TANH, false> {
-//   static constexpr auto arity{1};
+template <>
+struct operator_functor<ast_operator::TANH, false> {
+  static constexpr auto arity{1};
 
-//   template <typename InputT, std::enable_if_t<std::is_floating_point_v<InputT>>* = nullptr>
-//   __device__ inline auto operator()(InputT input) -> decltype(std::tanh(input))
-//   {
-//     return std::tanh(input);
-//   }
-// };
+  template <typename InputT, std::enable_if_t<std::is_floating_point_v<InputT>>* = nullptr>
+  __device__ inline auto operator()(InputT input) -> decltype(std::tanh(input))
+  {
+    return std::tanh(input);
+  }
+};
 
-// template <>
-// struct operator_functor<ast_operator::ARCSINH, false> {
-//   static constexpr auto arity{1};
+template <>
+struct operator_functor<ast_operator::ARCSINH, false> {
+  static constexpr auto arity{1};
 
-//   template <typename InputT, std::enable_if_t<std::is_floating_point_v<InputT>>* = nullptr>
-//   __device__ inline auto operator()(InputT input) -> decltype(std::asinh(input))
-//   {
-//     return std::asinh(input);
-//   }
-// };
+  template <typename InputT, std::enable_if_t<std::is_floating_point_v<InputT>>* = nullptr>
+  __device__ inline auto operator()(InputT input) -> decltype(std::asinh(input))
+  {
+    return std::asinh(input);
+  }
+};
 
-// template <>
-// struct operator_functor<ast_operator::ARCCOSH, false> {
-//   static constexpr auto arity{1};
+template <>
+struct operator_functor<ast_operator::ARCCOSH, false> {
+  static constexpr auto arity{1};
 
-//   template <typename InputT, std::enable_if_t<std::is_floating_point_v<InputT>>* = nullptr>
-//   __device__ inline auto operator()(InputT input) -> decltype(std::acosh(input))
-//   {
-//     return std::acosh(input);
-//   }
-// };
+  template <typename InputT, std::enable_if_t<std::is_floating_point_v<InputT>>* = nullptr>
+  __device__ inline auto operator()(InputT input) -> decltype(std::acosh(input))
+  {
+    return std::acosh(input);
+  }
+};
 
-// template <>
-// struct operator_functor<ast_operator::ARCTANH, false> {
-//   static constexpr auto arity{1};
+template <>
+struct operator_functor<ast_operator::ARCTANH, false> {
+  static constexpr auto arity{1};
 
-//   template <typename InputT, std::enable_if_t<std::is_floating_point_v<InputT>>* = nullptr>
-//   __device__ inline auto operator()(InputT input) -> decltype(std::atanh(input))
-//   {
-//     return std::atanh(input);
-//   }
-// };
+  template <typename InputT, std::enable_if_t<std::is_floating_point_v<InputT>>* = nullptr>
+  __device__ inline auto operator()(InputT input) -> decltype(std::atanh(input))
+  {
+    return std::atanh(input);
+  }
+};
 
-// template <>
-// struct operator_functor<ast_operator::EXP, false> {
-//   static constexpr auto arity{1};
+template <>
+struct operator_functor<ast_operator::EXP, false> {
+  static constexpr auto arity{1};
 
-//   template <typename InputT>
-//   __device__ inline auto operator()(InputT input) -> decltype(std::exp(input))
-//   {
-//     return std::exp(input);
-//   }
-// };
+  template <typename InputT>
+  __device__ inline auto operator()(InputT input) -> decltype(std::exp(input))
+  {
+    return std::exp(input);
+  }
+};
 
-// template <>
-// struct operator_functor<ast_operator::LOG, false> {
-//   static constexpr auto arity{1};
-//   operator_functor template <typename InputT>
-//   __device__ inline auto operator()(InputT input) -> decltype(std::log(input))
-//   {
-//     return std::log(input);
-//   }
-// };
+template <>
+struct operator_functor<ast_operator::LOG, false> {
+  static constexpr auto arity{1};
+   template <typename InputT>
+  __device__ inline auto operator()(InputT input) -> decltype(std::log(input))
+  {
+    return std::log(input);
+  }
+};
 
 template <>
 struct operator_functor<ast_operator::SQRT, false> {
