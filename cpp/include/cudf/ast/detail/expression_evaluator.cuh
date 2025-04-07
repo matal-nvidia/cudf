@@ -40,11 +40,8 @@ namespace detail {
 // TODO: duplicate
 CUDF_HOST_DEVICE constexpr bool is_complex_type(cudf::type_id type)
 {
-  // TODO: only decimals? impact of dictionary types, strings?
-  return type == cudf::type_id::STRUCT || type == cudf::type_id::LIST ||
-         type == cudf::type_id::DECIMAL32 || type == cudf::type_id::DECIMAL64 ||
-         type == cudf::type_id::DECIMAL128 || type == cudf::type_id::STRING ||
-         type == cudf::type_id::DICTIONARY32;
+  return type == cudf::type_id::DECIMAL32 || type == cudf::type_id::DECIMAL64 ||
+         type == cudf::type_id::DECIMAL128;
 }
 
 /**
