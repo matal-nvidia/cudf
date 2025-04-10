@@ -86,6 +86,96 @@ CUDF_HOST_DEVICE inline constexpr decltype(auto) ast_operator_dispatcher(ast_ope
       return f.template operator()<ast_operator::TRUE_DIV>(std::forward<Ts>(args)...);
     case ast_operator::FLOOR_DIV:
       return f.template operator()<ast_operator::FLOOR_DIV>(std::forward<Ts>(args)...);
+    case ast_operator::POW:
+      return f.template operator()<ast_operator::POW>(std::forward<Ts>(args)...);
+    case ast_operator::EQUAL:
+      return f.template operator()<ast_operator::EQUAL>(std::forward<Ts>(args)...);
+    case ast_operator::NULL_EQUAL:
+      return f.template operator()<ast_operator::NULL_EQUAL>(std::forward<Ts>(args)...);
+    case ast_operator::NOT_EQUAL:
+      return f.template operator()<ast_operator::NOT_EQUAL>(std::forward<Ts>(args)...);
+    case ast_operator::LESS:
+      return f.template operator()<ast_operator::LESS>(std::forward<Ts>(args)...);
+    case ast_operator::GREATER:
+      return f.template operator()<ast_operator::GREATER>(std::forward<Ts>(args)...);
+    case ast_operator::LESS_EQUAL:
+      return f.template operator()<ast_operator::LESS_EQUAL>(std::forward<Ts>(args)...);
+    case ast_operator::GREATER_EQUAL:
+      return f.template operator()<ast_operator::GREATER_EQUAL>(std::forward<Ts>(args)...);
+    case ast_operator::BITWISE_AND:
+      return f.template operator()<ast_operator::BITWISE_AND>(std::forward<Ts>(args)...);
+    case ast_operator::BITWISE_OR:
+      return f.template operator()<ast_operator::BITWISE_OR>(std::forward<Ts>(args)...);
+    case ast_operator::BITWISE_XOR:
+      return f.template operator()<ast_operator::BITWISE_XOR>(std::forward<Ts>(args)...);
+    case ast_operator::LOGICAL_AND:
+      return f.template operator()<ast_operator::LOGICAL_AND>(std::forward<Ts>(args)...);
+    case ast_operator::NULL_LOGICAL_AND:
+      return f.template operator()<ast_operator::NULL_LOGICAL_AND>(std::forward<Ts>(args)...);
+    case ast_operator::LOGICAL_OR:
+      return f.template operator()<ast_operator::LOGICAL_OR>(std::forward<Ts>(args)...);
+    case ast_operator::NULL_LOGICAL_OR:
+      return f.template operator()<ast_operator::NULL_LOGICAL_OR>(std::forward<Ts>(args)...);
+    case ast_operator::IDENTITY:
+      return f.template operator()<ast_operator::IDENTITY>(std::forward<Ts>(args)...);
+    case ast_operator::IS_NULL:
+      return f.template operator()<ast_operator::IS_NULL>(std::forward<Ts>(args)...);
+    case ast_operator::EXP:
+      return f.template operator()<ast_operator::EXP>(std::forward<Ts>(args)...);
+    case ast_operator::LOG:
+      return f.template operator()<ast_operator::LOG>(std::forward<Ts>(args)...);
+    case ast_operator::SQRT:
+      return f.template operator()<ast_operator::SQRT>(std::forward<Ts>(args)...);
+    case ast_operator::CBRT:
+      return f.template operator()<ast_operator::CBRT>(std::forward<Ts>(args)...);
+    case ast_operator::CEIL:
+      return f.template operator()<ast_operator::CEIL>(std::forward<Ts>(args)...);
+    case ast_operator::FLOOR:
+      return f.template operator()<ast_operator::FLOOR>(std::forward<Ts>(args)...);
+    case ast_operator::ABS:
+      return f.template operator()<ast_operator::ABS>(std::forward<Ts>(args)...);
+    case ast_operator::RINT:
+      return f.template operator()<ast_operator::RINT>(std::forward<Ts>(args)...);
+    case ast_operator::BIT_INVERT:
+      return f.template operator()<ast_operator::BIT_INVERT>(std::forward<Ts>(args)...);
+    case ast_operator::NOT:
+      return f.template operator()<ast_operator::NOT>(std::forward<Ts>(args)...);
+    default: {
+#ifndef __CUDA_ARCH__
+      CUDF_FAIL("Invalid operator.");
+#else
+      CUDF_UNREACHABLE("Invalid operator.");
+#endif
+    }
+  }
+}
+
+/**
+ * @brief Operator dispatcher
+ *
+ * @tparam F Type of forwarded functor.
+ * @tparam Ts Parameter pack of forwarded arguments.
+ * @param f Forwarded functor to be called.
+ * @param args Forwarded arguments to `operator()` of `f`.
+ */
+template <typename F, typename... Ts>
+CUDF_HOST_DEVICE inline constexpr decltype(auto) primitive_ast_operator_dispatcher(ast_operator op,
+                                                                                   F&& f,
+                                                                                   Ts&&... args)
+{
+  switch (op) {
+    case ast_operator::ADD:
+      return f.template operator()<ast_operator::ADD>(std::forward<Ts>(args)...);
+    case ast_operator::SUB:
+      return f.template operator()<ast_operator::SUB>(std::forward<Ts>(args)...);
+    case ast_operator::MUL:
+      return f.template operator()<ast_operator::MUL>(std::forward<Ts>(args)...);
+    case ast_operator::DIV:
+      return f.template operator()<ast_operator::DIV>(std::forward<Ts>(args)...);
+    case ast_operator::TRUE_DIV:
+      return f.template operator()<ast_operator::TRUE_DIV>(std::forward<Ts>(args)...);
+    case ast_operator::FLOOR_DIV:
+      return f.template operator()<ast_operator::FLOOR_DIV>(std::forward<Ts>(args)...);
     case ast_operator::MOD:
       return f.template operator()<ast_operator::MOD>(std::forward<Ts>(args)...);
     case ast_operator::PYMOD:
@@ -130,24 +220,12 @@ CUDF_HOST_DEVICE inline constexpr decltype(auto) ast_operator_dispatcher(ast_ope
       return f.template operator()<ast_operator::COS>(std::forward<Ts>(args)...);
     case ast_operator::TAN:
       return f.template operator()<ast_operator::TAN>(std::forward<Ts>(args)...);
-    case ast_operator::ARCSIN:
-      return f.template operator()<ast_operator::ARCSIN>(std::forward<Ts>(args)...);
-    case ast_operator::ARCCOS:
-      return f.template operator()<ast_operator::ARCCOS>(std::forward<Ts>(args)...);
-    case ast_operator::ARCTAN:
-      return f.template operator()<ast_operator::ARCTAN>(std::forward<Ts>(args)...);
     case ast_operator::SINH:
       return f.template operator()<ast_operator::SINH>(std::forward<Ts>(args)...);
     case ast_operator::COSH:
       return f.template operator()<ast_operator::COSH>(std::forward<Ts>(args)...);
     case ast_operator::TANH:
       return f.template operator()<ast_operator::TANH>(std::forward<Ts>(args)...);
-    case ast_operator::ARCSINH:
-      return f.template operator()<ast_operator::ARCSINH>(std::forward<Ts>(args)...);
-    case ast_operator::ARCCOSH:
-      return f.template operator()<ast_operator::ARCCOSH>(std::forward<Ts>(args)...);
-    case ast_operator::ARCTANH:
-      return f.template operator()<ast_operator::ARCTANH>(std::forward<Ts>(args)...);
     case ast_operator::EXP:
       return f.template operator()<ast_operator::EXP>(std::forward<Ts>(args)...);
     case ast_operator::LOG:

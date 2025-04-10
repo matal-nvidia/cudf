@@ -385,13 +385,23 @@ struct expression_evaluator {
   {
     auto const typed_input =
       resolve_input<Input>(input, thread_intermediate_storage, input_row_index, input_row_index);
-    ast_operator_dispatcher(op,
-                            unary_expression_output_handler<Input>{},
-                            output_object,
-                            output_row_index,
-                            typed_input,
-                            output,
-                            thread_intermediate_storage);
+    if (has_complex_type) {
+      ast_operator_dispatcher(op,
+                              unary_expression_output_handler<Input>{},
+                              output_object,
+                              output_row_index,
+                              typed_input,
+                              output,
+                              thread_intermediate_storage);
+    } else {
+      primitive_ast_operator_dispatcher(op,
+                                        unary_expression_output_handler<Input>{},
+                                        output_object,
+                                        output_row_index,
+                                        typed_input,
+                                        output,
+                                        thread_intermediate_storage);
+    }
   }
 
   template <typename Input,
@@ -448,14 +458,25 @@ struct expression_evaluator {
       resolve_input<LHS>(lhs, thread_intermediate_storage, left_row_index, right_row_index);
     auto const typed_rhs =
       resolve_input<RHS>(rhs, thread_intermediate_storage, left_row_index, right_row_index);
-    ast_operator_dispatcher(op,
-                            binary_expression_output_handler<LHS, RHS>{},
-                            output_object,
-                            output_row_index,
-                            typed_lhs,
-                            typed_rhs,
-                            output,
-                            thread_intermediate_storage);
+    if (has_complex_type) {
+      ast_operator_dispatcher(op,
+                              binary_expression_output_handler<LHS, RHS>{},
+                              output_object,
+                              output_row_index,
+                              typed_lhs,
+                              typed_rhs,
+                              output,
+                              thread_intermediate_storage);
+    } else {
+      primitive_ast_operator_dispatcher(op,
+                                        binary_expression_output_handler<LHS, RHS>{},
+                                        output_object,
+                                        output_row_index,
+                                        typed_lhs,
+                                        typed_rhs,
+                                        output,
+                                        thread_intermediate_storage);
+    }
   }
 
   template <typename LHS,

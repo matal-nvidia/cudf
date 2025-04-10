@@ -16,6 +16,7 @@
 
 #include <cudf/ast/detail/expression_evaluator.cuh>
 #include <cudf/ast/detail/expression_parser.hpp>
+#include <cudf/ast/detail/operators.hpp>
 #include <cudf/ast/expressions.hpp>
 #include <cudf/column/column_device_view.cuh>
 #include <cudf/column/column_factories.hpp>
@@ -43,6 +44,28 @@ CUDF_HOST_DEVICE constexpr bool is_complex_type(cudf::type_id type)
 {
   return type == cudf::type_id::DECIMAL32 || type == cudf::type_id::DECIMAL64 ||
          type == cudf::type_id::DECIMAL128;
+}
+
+constexpr bool is_complex_operator(cudf::ast::ast_operator op)
+{
+  return op == cudf::ast::ast_operator::ARCSIN || op == cudf::ast::ast_operator::ARCCOS ||
+         op == cudf::ast::ast_operator::ARCTAN || op == cudf::ast::ast_operator::ARCSINH ||
+         op == cudf::ast::ast_operator::ARCCOSH || op == cudf::ast::ast_operator::ARCTANH ||
+         op == cudf::ast::ast_operator::COS || op == cudf::ast::ast_operator::SIN ||
+         op == cudf::ast::ast_operator::TAN || op == cudf::ast::ast_operator::COSH ||
+         op == cudf::ast::ast_operator::SINH || op == cudf::ast::ast_operator::TANH ||
+         op == cudf::ast::ast_operator::MOD || op == cudf::ast::ast_operator::PYMOD ||
+         op == cudf::ast::ast_operator::CAST_TO_FLOAT64 ||
+         op == cudf::ast::ast_operator::CAST_TO_INT64 ||
+         op == cudf::ast::ast_operator::CAST_TO_UINT64;
+}
+
+bool has_complex_operator(std::vector<cudf::ast::ast_operator> const& operators)
+{
+  for (auto const& op : operators) {
+    if (is_complex_operator(op)) { return true; }
+  }
+  return false;
 }
 
 /**
@@ -100,7 +123,8 @@ std::unique_ptr<column> compute_column(table_view const& table,
   auto const parser = ast::detail::expression_parser{expr, table, has_nulls, stream, mr};
 
   // TODO: only checking the output type not sufficient, need to check the expression tree?
-  auto const has_complex_type = is_complex_type(parser.output_type().id());
+  auto const has_complex_type =
+    is_complex_type(parser.output_type().id()) || has_complex_operator(parser._operators);
 
   auto const output_column_mask_state =
     has_nulls ? mask_state::UNINITIALIZED : mask_state::UNALLOCATED;

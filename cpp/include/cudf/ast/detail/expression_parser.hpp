@@ -222,6 +222,7 @@ class expression_parser {
   expression_device_view device_expression_data;  ///< The collection of data required to evaluate
                                                   ///< the expression on the device.
   int shmem_per_thread;
+  std::vector<ast_operator> _operators;
 
  private:
   /**
@@ -342,7 +343,7 @@ class expression_parser {
   intermediate_counter _intermediate_counter;
   bool _has_nulls;
   std::vector<detail::device_data_reference> _data_references;
-  std::vector<ast_operator> _operators;
+
   std::vector<cudf::size_type> _operator_arities;
   std::vector<cudf::size_type> _operator_source_indices;
   std::vector<generic_scalar_device_view> _literals;
